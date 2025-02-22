@@ -99,10 +99,13 @@ def gerar_df_servico_selecionado(df_data_filtrado, servico):
     df_servico_selecionado = df_data_filtrado[df_data_filtrado['Servico'].isin(servico)].reset_index(drop=True)
 
     df_servico_selecionado['Reserva_Mae'] = df_servico_selecionado['Reserva'].str[:10]
-
-    st.session_state.df_guias_in['Reserva_Mae'] = st.session_state.df_guias_in['Reserva'].str[:10]
     
-    df_servico_selecionado = pd.merge(df_servico_selecionado, st.session_state.df_guias_in[['Reserva_Mae', 'Guia']], on='Reserva_Mae', how='left')
+    df_servico_selecionado = pd.merge(df_servico_selecionado, st.session_state.df_guias_in[['Reserva', 'Guia']], left_on='Reserva_Mae', right_on='Reserva', how='left')
+
+    df_servico_selecionado.loc[pd.notna(df_servico_selecionado['Vendedor']), 'Guia'] = None
+
+    df_servico_selecionado.loc[pd.isna(df_servico_selecionado['Vendedor']) & pd.notna(df_servico_selecionado['Guia']), 'Vendedor'] = \
+        df_servico_selecionado.loc[pd.isna(df_servico_selecionado['Vendedor']) & pd.notna(df_servico_selecionado['Guia']), 'Guia']
 
     df_servico_selecionado['CLD'] = np.where(df_servico_selecionado['Observacao'].str.upper().str.contains('CLD'), 'X', '')
 
@@ -110,21 +113,39 @@ def gerar_df_servico_selecionado(df_data_filtrado, servico):
 
 def gerar_df_ranking(df_servico_selecionado):
 
-    df_ranking = df_servico_selecionado.groupby('Vendedor', as_index=False)['Total ADT | CHD'].sum()
+    def adicionar_coluna_paxs_opcionais(df_servico_selecionado, df_ranking):
+
+        df_paxs_opcionais = df_servico_selecionado[pd.isna(df_servico_selecionado['Guia'])].groupby('Vendedor', as_index=False)['Total ADT | CHD'].sum()
+
+        df_paxs_opcionais.columns = ['Vendedor', 'Paxs Opcionais']
+
+        df_ranking = pd.merge(df_ranking, df_paxs_opcionais, on='Vendedor', how='left')
+
+        df_ranking['Paxs Opcionais'] = df_ranking['Paxs Opcionais'].fillna(0)
+
+        return df_ranking
     
-    df_inclusos_guia = df_servico_selecionado.groupby('Guia', as_index=False)['Total ADT | CHD'].sum()
+    def adicionar_coluna_paxs_inclusos(df_servico_selecionado, df_ranking):
     
-    df_inclusos_guia = df_inclusos_guia.rename(columns={'Guia': 'Vendedor', 'Total ADT | CHD': 'Paxs Inclusos'})
+        df_paxs_inclusos = df_servico_selecionado.groupby('Guia', as_index=False, dropna=True)['Total ADT | CHD'].sum()
 
-    df_ranking = pd.merge(df_ranking, df_inclusos_guia, on='Vendedor', how='left')
+        df_paxs_inclusos.columns = ['Vendedor', 'Paxs Inclusos']
 
-    df_ranking['Paxs Inclusos'] = df_ranking['Paxs Inclusos'].fillna(0)
+        df_ranking = pd.merge(df_ranking, df_paxs_inclusos, on='Vendedor', how='left')
 
-    df_ranking['Paxs Totais'] = df_ranking['Paxs Inclusos'] + df_ranking['Total ADT | CHD']
+        df_ranking['Paxs Inclusos'] = df_ranking['Paxs Inclusos'].fillna(0)
+
+        return df_ranking
+
+    df_ranking = pd.DataFrame(columns=['Vendedor'], data=df_servico_selecionado['Vendedor'].dropna().unique())
+
+    df_ranking = adicionar_coluna_paxs_opcionais(df_servico_selecionado, df_ranking)
+
+    df_ranking = adicionar_coluna_paxs_inclusos(df_servico_selecionado, df_ranking)
+
+    df_ranking['Paxs Totais'] = df_ranking['Paxs Inclusos'] + df_ranking['Paxs Opcionais']
 
     df_ranking = df_ranking.sort_values(by='Paxs Totais', ascending=False)
-
-    df_ranking = df_ranking.rename(columns={'Total ADT | CHD': 'Paxs Opcionais'})  
 
     for coluna in ['Paxs Opcionais', 'Paxs Inclusos', 'Paxs Totais']:
 
