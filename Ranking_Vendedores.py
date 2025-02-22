@@ -2,6 +2,7 @@ import pandas as pd
 import mysql.connector
 import decimal
 import streamlit as st
+import numpy as np
 
 def bd_phoenix(vw_name):
 
@@ -103,11 +104,11 @@ def gerar_df_servico_selecionado(df_data_filtrado, servico):
     
     df_servico_selecionado = pd.merge(df_servico_selecionado, st.session_state.df_guias_in[['Reserva_Mae', 'Guia']], on='Reserva_Mae', how='left')
 
-    df_servico_selecionado['CLD'] = df_servico_selecionado['Observacao'].apply(lambda x: 'X' if 'CLD' in x.upper() else '')
+    df_servico_selecionado['CLD'] = np.where(df_servico_selecionado['Observacao'].str.upper().str.contains('CLD'), 'X', '')
 
     return df_servico_selecionado
 
-def gerar_df_ranking(df_servico_selecionado, servico):
+def gerar_df_ranking(df_servico_selecionado):
 
     df_ranking = df_servico_selecionado.groupby('Vendedor', as_index=False)['Total ADT | CHD'].sum()
     
@@ -197,6 +198,14 @@ def plotar_botao_download(row3, html_content, html_content_2):
             mime="text/html"
         )
 
+def gerar_df_ranking_nomes_html_session_state(df_ranking, servico):
+
+    st.session_state.df_ranking = df_ranking
+
+    st.session_state.nome_html = f"{servico[0].split(' ')[0]}.html"
+
+    st.session_state.nome_html_2 = f"Alejandro | {servico[0].split(' ')[0]}.html"
+    
 st.set_page_config(layout='wide')
 
 if not 'df_ranking_vendedores' in st.session_state:
@@ -257,17 +266,13 @@ if senha=='luckmcz@1960':
 
             df_servico_selecionado = gerar_df_servico_selecionado(df_data_filtrado, servico)
 
-            df_ranking = gerar_df_ranking(df_servico_selecionado, servico)
+            df_ranking = gerar_df_ranking(df_servico_selecionado)
 
             plotar_titulo(df_ranking, df_servico_selecionado, servico, container_2)
     
             container_2.dataframe(df_ranking, hide_index=True, use_container_width=True)
-    
-            st.session_state.df_ranking = df_ranking
-    
-            st.session_state.nome_html = f"{servico[0].split(' ')[0]}.html"
-    
-            st.session_state.nome_html_2 = f"Alejandro | {servico[0].split(' ')[0]}.html"
+
+            gerar_df_ranking_nomes_html_session_state(df_ranking, servico)
     
     if 'df_ranking' in st.session_state and len(servico)>0:
 
